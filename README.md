@@ -33,6 +33,20 @@ This repository demonstrates a simple Python application and supporting scripts 
    ```
    The app will be available at http://localhost:5000
 
+#### Example: Minimal Flask App (`app.py`)
+```python
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return 'Hello, world!'
+
+if __name__ == '__main__':
+    app.run()
+```
+
 ### Docker
 1. Build the Docker image:
    ```sh
@@ -44,17 +58,94 @@ This repository demonstrates a simple Python application and supporting scripts 
    docker run -d -p 5000:5000 simple-python-flask-app
    ```
 
+#### Example: Dockerfile
+```dockerfile
+FROM python:3.8
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["python", "app.py"]
+```
+
 ### AWS CI/CD Pipeline
 - **CodeBuild** uses `buildspec.yml` to install dependencies, run tests, build, and push the Docker image.
 - **CodeDeploy** uses `appspec.yml` to run deployment hooks (`start_container.sh` and `stop_container.sh`).
 - **Lambda Function** (`lambda.py`) can be used to automate EBS volume modifications.
 
+#### Example: CodeBuild `buildspec.yml`
+```yaml
+version: 0.2
+
+env:
+  parameter-store:
+    DOCKER_REGISTRY_USERNAME: /myapp/docker-credentials/username
+    DOCKER_REGISTRY_PASSWORD: /myapp/docker-credentials/password
+    DOCKER_REGISTRY_URL: /myapp/docker-credentials/docker-registry/url
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  pre_build:
+    commands:
+      - echo "Installing dependencies..."
+      - pip install -r simple-python-app/requirements.txt
+  build:
+    commands:
+      - echo "Running tests..."
+      - cd simple-python-app/
+      - echo "Building Docker image..."
+      - echo "$DOCKER_REGISTRY_PASSWORD" | docker login -u "$DOCKER_REGISTRY_USERNAME" --password-stdin "$DOCKER_REGISTRY_URL"
+      - docker build -t "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/simple-python-flask-app:latest" .
+      - docker push "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/simple-python-flask-app:latest"
+  post_build:
+    commands:
+      - echo "Build completed successfully!"
+artifacts:
+  files:
+    - '**/*'
+  base-directory: simple-python-app
+```
+
+#### Example: CodeDeploy `appspec.yml`
+```yaml
+version: 0.0
+os: linux
+
+hooks:
+  ApplicationStop:
+    - location: scripts/stop_container.sh
+      timeout: 300
+      runas: root
+  AfterInstall:
+    - location: scripts/start_container.sh
+      timeout: 300
+      runas: root
+```
+
 ## Deployment Scripts
 - `scripts/start_container.sh`: Pulls and runs the Docker image from Docker Hub.
 - `scripts/stop_container.sh`: Stops the running container.
 
-## Lambda Function Example
-- `lambda.py` expects an event with an EBS volume ARN or volume ID and modifies its type to `gp3` using boto3.
+#### Example: `start_container.sh`
+```bash
+#!/bin/bash
+set -e
+# Pull the Docker image from Docker Hub
+docker pull rajaleti/simple-python-flask-app
+# Run the Docker image as a container
+docker run -d -p 5000:5000 rajaleti/simple-python-flask-app
+```
+
+#### Example: `stop_container.sh`
+```bash
+#!/bin/bash
+set -e
+# Stop the running container (if any)
+echo "Hi"
+```
+
 
 ## License
 MIT License
